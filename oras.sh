@@ -88,6 +88,13 @@ function oras_manifest_fetch() {
     $curl -LsH "Accept: ${media_types[*]}" "$scheme://$reg/v2/$repo/manifests/$ref" | jq
 }
 
+function oras_ping() {
+    local reg=$1
+    local scheme=$(get_scheme "$reg")
+
+    $curl -Ls "$scheme://$reg/v2/" | jq
+}
+
 function oras_repo() {
     local cmd=$1
     shift
@@ -161,7 +168,7 @@ function oras_test_chunked_upload() {
     echo "Location: $upload_url"
     resp=$($curl -XPATCH -H "Content-Type: application/octet-stream" --data-binary "@$file" "$upload_url" -sD-)
     upload_url=$(echo "$resp" | grep -i location | cut -d" " -f2 | tr -d "\r")
-        if [[ $upload_url == /* ]]; then
+    if [[ $upload_url == /* ]]; then
         upload_url="$scheme://$reg$upload_url"
     fi
 
@@ -182,6 +189,7 @@ function usage() {
     echo "  blob fetch <ref> <file>"
     echo "  blob push <ref> <file>"
     echo "  manifest fetch <ref>"
+    echo "  ping <registry>"
     echo "  repo ls <registry>"
     echo "  repo tags <ref>"
     echo "  test chunked-upload <ref> <file>"
@@ -215,6 +223,9 @@ case $cmd in
         ;;
     manifest)
         oras_manifest "$@"
+        ;;
+    ping)
+        oras_ping "$@"
         ;;
     repo)
         oras_repo "$@"
