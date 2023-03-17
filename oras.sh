@@ -3,21 +3,10 @@
 function oras_blob() {
     local cmd=$1
     shift
-    case $cmd in
-        fetch)
-            oras_blob_fetch "$@"
-            ;;
-        push)
-            oras_blob_push "$@"
-            ;;
-        *)
-            echo "Unknown command: $cmd"
-            exit 1
-            ;;
-    esac
+    oras_blob_$cmd "$@"
 }
 
-function oras_blob_fetch() {
+function oras_blob_fetch() { ## <ref> - Fetch a blob from a registry
     local ref=$1
     shift
     local reg=${ref%%/*}
@@ -29,7 +18,7 @@ function oras_blob_fetch() {
     $curl -L "$scheme://$reg/v2/$repo/blobs/$digest" "$@"
 }
 
-function oras_blob_push() {
+function oras_blob_push() { ## <ref> <file> - Push a blob to a registry
     local ref=$1
     local reg=${ref%%/*}
     local repo=${ref#*/}
@@ -50,21 +39,26 @@ function oras_blob_push() {
     echo "Digest: $digest"
 }
 
+function oras_help() { ## Show this help
+    echo "Usage: $0 <command> [args]"
+    echo "Commands:"
+    grep -E '^function oras_[a-zA-Z0-9_-]+\(\) { ##' "$0" | sed 's/function oras_\(.*\)() { ## \(.*\)/\1|\2/g' | while IFS="|" read cmd desc; do
+        cmd=${cmd//_/ }
+        if [[ $desc == *" - "* ]]; then
+            cmd+=" ${desc%% -*}"
+            desc=${desc#*- }
+        fi
+        printf "  %-40s %s\n" "$cmd" "$desc"
+    done
+}
+
 function oras_manifest() {
     local cmd=$1
     shift
-    case $cmd in
-        fetch)
-            oras_manifest_fetch "$@"
-            ;;
-        *)
-            echo "Unknown command: $cmd"
-            exit 1
-            ;;
-    esac
+    oras_manifest_$cmd "$@"
 }
 
-function oras_manifest_fetch() {
+function oras_manifest_fetch() { ## <ref> - Fetch a manifest from a registry
     local ref=$1
     local reg=${ref%%/*}
     local repo=${ref#*/}
@@ -88,7 +82,7 @@ function oras_manifest_fetch() {
     $curl -LsH "Accept: ${media_types[*]}" "$scheme://$reg/v2/$repo/manifests/$ref" | jq
 }
 
-function oras_ping() {
+function oras_ping() { ## <registry> - Ping a registry
     local reg=$1
     local scheme=$(get_scheme "$reg")
 
@@ -98,27 +92,16 @@ function oras_ping() {
 function oras_repo() {
     local cmd=$1
     shift
-    case $cmd in
-        ls)
-            oras_repo_ls "$@"
-            ;;
-        tags)
-            oras_repo_tags "$@"
-            ;;
-        *)
-            echo "Unknown command: $cmd"
-            exit 1
-            ;;
-    esac
+    oras_repo_$cmd "$@"
 }
 
-function oras_repo_ls() {
+function oras_repo_ls() { ## <registry> - List repositories in a registry
     local reg=$1
     local scheme=$(get_scheme "$reg")
     $curl -Ls "$scheme://$reg/v2/_catalog" | jq -r '.repositories[]' | sort
 }
 
-function oras_repo_tags() {
+function oras_repo_tags() { ## <ref> - List tags in a repository
     local ref=$1
     local reg=${ref%%/*}
     local repo=${ref#*/}
@@ -129,18 +112,10 @@ function oras_repo_tags() {
 function oras_test() {
     local cmd=$1
     shift
-    case $cmd in
-        chunked-upload)
-            oras_test_chunked_upload "$@"
-            ;;
-        *)
-            echo "Unknown command: $cmd"
-            exit 1
-            ;;
-    esac
+    oras_test_$cmd "$@"
 }
 
-function oras_test_chunked_upload() {
+function oras_test_chunked-upload() { ## <ref> <file> - Test blob chunked upload
     echo "---------------------------"
     echo "Testing blob chunked upload"
     echo "---------------------------"
@@ -183,17 +158,8 @@ function oras_test_chunked_upload() {
     $curl -XPUT -H "Content-Type: application/octet-stream" "$upload_url&digest=$digest" -D-
 }
 
-function usage() {
-    echo "Usage: $0 <command> [args]"
-    echo "Commands:"
-    echo "  blob fetch <ref> <file>"
-    echo "  blob push <ref> <file>"
-    echo "  manifest fetch <ref>"
-    echo "  ping <registry>"
-    echo "  repo ls <registry>"
-    echo "  repo tags <ref>"
-    echo "  test chunked-upload <ref> <file>"
-    echo "  version"
+function oras_version() { ## Show version
+    echo "oras.sh v0.1.0"
 }
 
 function get_scheme() {
@@ -211,33 +177,10 @@ if [ -n "$ORAS_AUTH" ]; then
 fi
 
 if [ $# -lt 1 ]; then
-    usage
+    oras_help
     exit 1
 fi
 
 cmd=$1
 shift
-case $cmd in
-    blob)
-        oras_blob "$@"
-        ;;
-    manifest)
-        oras_manifest "$@"
-        ;;
-    ping)
-        oras_ping "$@"
-        ;;
-    repo)
-        oras_repo "$@"
-        ;;
-    test)
-        oras_test "$@"
-        ;;
-    version)
-        echo "oras.sh v0.1.0"
-        ;;
-    *)
-        echo "Unknown command: $cmd"
-        exit 1
-        ;;
-esac
+oras_$cmd "$@"
