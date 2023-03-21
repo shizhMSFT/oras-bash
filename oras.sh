@@ -82,6 +82,27 @@ function oras_manifest_fetch() { ## <ref> - Fetch a manifest from a registry
     $curl -LsH "Accept: ${media_types[*]}" "$scheme://$reg/v2/$repo/manifests/$ref" | jq
 }
 
+function oras_manifest_push() { ## <ref> <file> - Push a manifest to a registry
+    local ref=$1
+    local reg=${ref%%/*}
+    local repo=${ref#*/}
+    if [[ $repo == *@* ]]; then
+        ref=${repo#*@}
+        repo=${repo%%@*}
+    else
+        ref=${repo#*\:}
+        repo=${repo%%\:*}
+    fi
+    local scheme=$(get_scheme "$reg")
+    local file=$2
+    local digest="sha256:$(sha256sum "$file" | cut -d" " -f1 | tr -d "\r")"
+
+    $curl -XPUT -H "Content-Type: $(cat "$file" | jq -r '.mediaType')" --data-binary "@$file" "$scheme://$reg/v2/$repo/manifests/$ref"
+
+    echo "Pushed $reg/$repo"
+    echo "Digest: $digest"
+}
+
 function oras_ping() { ## <registry> - Ping a registry
     local reg=$1
     local scheme=$(get_scheme "$reg")
