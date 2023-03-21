@@ -89,6 +89,23 @@ function oras_ping() { ## <registry> - Ping a registry
     $curl -Ls "$scheme://$reg/v2/" | jq
 }
 
+function oras_pull() { ## <ref> - Pull an artifact from a registry
+    local ref=$1
+    local reg=${ref%%/*}
+    local repo=${ref#*/}
+    repo=${repo%%:*}
+    local manifest=$(oras_manifest_fetch "$ref")
+    echo "$manifest" | jq -r '.config.digest + " " + .annotations."org.opencontainers.image.title"' | (
+        read digest title
+        if [ -n "$title" ]; then
+            oras_blob_fetch "$reg/$repo@$digest" -so "$title"
+        fi
+    )
+    echo "$manifest" | jq -r '.layers[] | .digest + " " + .annotations."org.opencontainers.image.title"' | while read digest title; do
+        oras_blob_fetch "$reg/$repo@$digest" -so "${title:-$digest}"
+    done
+}
+
 function oras_repo() {
     local cmd=$1
     shift
