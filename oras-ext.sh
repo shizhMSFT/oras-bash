@@ -4,10 +4,10 @@
 
 # usage: oras backup [flags] <registry>/<repository>[:<ref1>[,<ref2>...]] [...]
 # flags:
-#   -o, --output <file>     Output path for the backup
+#   -o, --output <path>     Output path for the backup
 #       --include-referrers Include referrers in the backup
 function oras_backup() { ## Backup OCI artifacts and repositories from a registry
-    local raw_ref=()
+    local raw_refs=()
     local output=""
     local include_referrers=""
 
@@ -27,7 +27,7 @@ function oras_backup() { ## Backup OCI artifacts and repositories from a registr
                 exit 1
                 ;;
             *)
-                raw_ref+=("$1")
+                raw_refs+=("$1")
                 shift
                 ;;
         esac
@@ -42,14 +42,14 @@ function oras_backup() { ## Backup OCI artifacts and repositories from a registr
 
     # backup each repository
     local multi_repo=false
-    if [[ ${#raw_ref[@]} -gt 1 ]]; then
+    if [[ ${#raw_refs[@]} -gt 1 ]]; then
         multi_repo=true
     fi
-    for ref in "${raw_ref[@]}"; do
+    for raw_ref in "${raw_refs[@]}"; do
         # parse tags
         local full_repo=""
         local tags=""
-        read full_repo tags <<< $(parse_ref "$ref")
+        read full_repo tags <<< $(parse_ref "$raw_ref")
         if [[ -z $tags ]]; then
             tags=$(oras repo tags $full_repo)
         fi
@@ -61,12 +61,13 @@ function oras_backup() { ## Backup OCI artifacts and repositories from a registr
 
         # backup each tag
         for tag in $tags; do
-            printf "\e[32m>>>\e[0m %s\n" "Backing up $full_repo:$tag"
+            ref="$full_repo:$tag"
+            printf "\e[32m>>>\e[0m %s\n" "Backing up $ref"
 
             if $multi_repo; then
-                oras cp $include_referrers --to-oci-layout-path "$output" "$full_repo:$tag" "$full_repo:$tag"
+                oras cp $include_referrers "$ref" --to-oci-layout-path "$output" "$ref"
             else
-                oras cp $include_referrers "$full_repo:$tag" --to-oci-layout "$output:$tag"
+                oras cp $include_referrers "$ref" --to-oci-layout "$output:$tag"
             fi
         done
     done
@@ -81,6 +82,85 @@ function oras_backup() { ## Backup OCI artifacts and repositories from a registr
     else
         echo "Backup saved to directory: $output"
     fi
+}
+
+# usage: oras restore [flags] <registry>/<repository>[:<ref1>[,<ref2>...]] [...]
+# flags:
+#   -i, --input <path>      Input path for the backup
+#       --exclude-referrers Exclude referrers from the restore
+function oras_restore() { ## Restore OCI artifacts and repositories from a backup
+    local raw_refs=()
+    local input=""
+    local exclude_referrers="-r"
+
+    # parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -i|--input)
+                input="$2"
+                shift 2
+                ;;
+            --exclude-referrers)
+                exclude_referrers=""
+                shift
+                ;;
+            -*)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+            *)
+                raw_refs+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    # check if the source input is a multi-repository layout
+    local all_tags=$(oras repo tags --oci-layout "$input")
+    local multi_repo=false
+    if grep -q ':' <<< "$all_tags"; then
+        multi_repo=true
+    fi
+
+    # restore each repository
+    for raw_ref in "${raw_refs[@]}"; do
+        # parse tags
+        local full_repo=""
+        local tags=""
+        read full_repo tags <<< $(parse_ref "$raw_ref")
+        if [[ -z $tags ]]; then
+            if $multi_repo; then
+                tags=$(grep "$full_repo:" <<< "$all_tags")
+            else
+                tags=$all_tags
+            fi
+        fi
+
+        echo "Restoring repository: $full_repo"
+        echo "Tags:"
+        for tag in $tags; do
+            tag=${tag#"$full_repo:"}
+            echo "- $tag"
+        done
+
+        # restore each tag
+        for tag in $tags; do
+            if [[ $tag == *:* ]]; then
+                tag=${tag#"$full_repo:"}
+            fi
+
+            ref="$full_repo:$tag"
+            printf "\e[32m>>>\e[0m %s\n" "Restoring $ref"
+
+            if $multi_repo; then
+                echo oras cp $exclude_referrers --from-oci-layout-path "$input" "$ref" "$ref"
+            else
+                echo oras cp $exclude_referrers --from-oci-layout "$input:$tag" "$ref"
+            fi
+        done
+    done
+
+    echo "Restored from $input"
 }
 
 function oras_help() { ## Show this help
